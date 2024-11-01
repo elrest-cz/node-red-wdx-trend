@@ -13,29 +13,6 @@
 
 <script type="text/javascript">
 
-	RED.nodes.registerType('edesign.runtime.web-socket', {
-		category: 'config',
-		defaults: {
-			url: {
-				value: '',
-				required: true,
-				label: 'Server',
-				validate: RED.validators.regex(/^((?!\/debug\/ws).)*$/)
-			}
-		},
-		inputs: 0,
-		outputs: 0,
-		label: function () {
-			return this.url;
-		},
-
-		oneditprepare: function () {
-
-		},
-		oneditsave: function () {
-		}
-	});
-
 	/**
 	 * Common
 	 */
@@ -434,13 +411,13 @@
 	/**
 	 * Trends
 	 */
-	RED.nodes.registerType('edesign.runtime.trend.list', {
+	RED.nodes.registerType('wago.wdx.trend.list', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 		},
@@ -457,13 +434,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.detail', {
+	RED.nodes.registerType('wago.wdx.trend.detail', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -482,13 +459,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.monitor', {
+	RED.nodes.registerType('wago.wdx.trend.monitor', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -507,13 +484,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.delete', {
+	RED.nodes.registerType('wago.wdx.trend.delete', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -532,13 +509,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.save', {
+	RED.nodes.registerType('wago.wdx.trend.save', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trend: {
@@ -557,13 +534,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.export-sqlite', {
+	RED.nodes.registerType('wago.wdx.trend.export-sqlite', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -582,13 +559,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.export-csv', {
+	RED.nodes.registerType('wago.wdx.trend.export-csv', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -607,13 +584,13 @@
 		},
 	});
 
-	RED.nodes.registerType('edesign.runtime.trend.export-image', {
+	RED.nodes.registerType('wago.wdx.trend.export-image', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
 		defaults: {
 			name: { value: "" },
 			client: {
-				type: "edesign.runtime.web-socket",
+				type: "wago.wdx.web-socket",
 				required: true
 			},
 			trendUuid: {
@@ -633,20 +610,7 @@
 	});
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.web-socket">
-
-	<div class="form-row">
-		<label for="node-config-input-url">
-			<i class="fa fa-bookmark"></i>
-			<span>Url</span>
-		</label>
-		<input id="node-config-input-url" type="text" placeholder="ws://localhost:8081">
-	</div>
-
-</script>
-
-
-<script type="text/html" data-template-name="edesign.runtime.trend.list">
+<script type="text/html" data-template-name="wago.wdx.trend.list">
 
 	<div class="form-row">
 
@@ -661,27 +625,13 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.detail">
-
-	<div class="form-row">
-
-		<label for="node-input-client">
-			<i class="fa fa-bookmark"></i>
-			<span>Web Socket Client</span>
-		</label>
-		
-		<input type="text" id="node-input-client">
-
-	</div>
-
-	<div class="form-row">
-		<label for="node-input-trend-id">Trend Id</label>
-		<input type="text" id="node-input-trend-id" placeholder="Trend Id">
-	</div>
-
+<script type="text/html" data-help-name="wago.wdx.trend.list">
+	<h2>WAGO - WDX - Trend - List</h2>
+	<p>Retrieves trend list from WDX</p>
+	<h2>Parameters</h2>
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.delete">
+<script type="text/html" data-template-name="wago.wdx.trend.detail">
 
 	<div class="form-row">
 
@@ -701,7 +651,39 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.save">
+<script type="text/html" data-help-name="wago.wdx.trend.detail">
+	<h2>WAGO - WDX - Trend - Detail</h2>
+	<p>Retrieves trend detail from WDX</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.delete">
+
+	<div class="form-row">
+
+		<label for="node-input-client">
+			<i class="fa fa-bookmark"></i>
+			<span>Web Socket Client</span>
+		</label>
+		
+		<input type="text" id="node-input-client">
+
+	</div>
+
+	<div class="form-row">
+		<label for="node-input-trend-id">Trend Id</label>
+		<input type="text" id="node-input-trend-id" placeholder="Trend Id">
+	</div>
+
+</script>
+
+<script type="text/html" data-help-name="wago.wdx.trend.delete">
+	<h2>WAGO - WDX - Trend - Delete</h2>
+	<p>Deletes trend from WDX</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.save">
 
 	<div class="form-row">
 
@@ -721,7 +703,13 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.monitor">
+<script type="text/html" data-help-name="wago.wdx.trend.save">
+	<h2>WAGO - WDX - Trend - Save</h2>
+	<p>Saves trend to WDX</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.monitor">
 
 	<div class="form-row">
 
@@ -741,7 +729,13 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.export-image">
+<script type="text/html" data-help-name="wago.wdx.trend.monitor">
+	<h2>WAGO - WDX - Trend - Monitor</h2>
+	<p>Subscribe/Unsubscribe to WDX trend monitor</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.export-image">
 
 	<div class="form-row">
 
@@ -761,7 +755,13 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.export-sqlite">
+<script type="text/html" data-help-name="wago.wdx.trend.export-image">
+	<h2>WAGO - WDX - Trend - Export Image</h2>
+	<p>Export trend image from WDX</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.export-sqlite">
 
 	<div class="form-row">
 
@@ -781,7 +781,13 @@
 
 </script>
 
-<script type="text/html" data-template-name="edesign.runtime.trend.export-csv">
+<script type="text/html" data-help-name="wago.wdx.trend.export-sqlite">
+	<h2>WAGO - WDX - Trend - Export SQLite</h2>
+	<p>Export trend SQLite database from WDX</p>
+	<h2>Parameters</h2>
+</script>
+
+<script type="text/html" data-template-name="wago.wdx.trend.export-csv">
 
 	<div class="form-row">
 
@@ -811,9 +817,8 @@
 
 </script>
 
-<script type="text/html" data-help-name="edesign.runtime.instance.list">
-	<h2>WDX - Instance - List</h2>
-	<p>List instances</p>
+<script type="text/html" data-help-name="wago.wdx.trend.export-csv">
+	<h2>WAGO - WDX - Trend - Export CSV</h2>
+	<p>Export trend CSV data from WDX</p>
 	<h2>Parameters</h2>
-	<p>none</p>
 </script>

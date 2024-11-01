@@ -1,4 +1,4 @@
-# WDX - Node Red - Trend
+# Wago - Node Red - WDX - Trend
 
 Node Red plugin WDX Trend Palette with nodes implementing WDX WS Trend Interface communication within Node Red application.
 
@@ -16,7 +16,6 @@ Node Red plugin WDX Trend Palette with nodes implementing WDX WS Trend Interface
 ## Requirements
 + WDX Runtime - Docker or local WDX runtime installation.
 + Node-RED editor.
-+ Node-RED WDX Pallete.
 
 
 ## Installation

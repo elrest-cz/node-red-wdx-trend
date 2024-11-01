@@ -8,10 +8,6 @@ module.exports = function (RED) {
 
 	"use strict";
 
-	const ws = require("ws");
-	const uuid = require("uuid");
-	const { Subject, BehaviorSubject } = require("rxjs");
-
 	const WDXSchema = require("@wago/wdx-schema");
 
 	const WS_STATUS_ONLINE_COLOR = 'green'; //@todo Wago green not work as format: #6EC800 , rgb(110, 200, 0)
@@ -56,117 +52,7 @@ module.exports = function (RED) {
 
 	const WS_RECONNECT_TIMEOUT = 1000;
 
-	function EDesignRuntimeWebSocketClient(config) {
-		console.log("EDesignRuntimeWebSocketClient");
-		RED.nodes.createNode(this, config);
-
-		this.__ws = undefined;
-		this.__wsStatus = new BehaviorSubject(WS_STATUS_CODES.CONNECTING);
-		this.__wsIncomingMessages = new Subject();
-		this.__closing = false;
-
-		const __connect = async () => {
-
-			this.__ws = new ws(config.url);
-			this.__ws.setMaxListeners(0);
-			this.__ws.uuid = uuid.v4();
-
-			this.__ws.on('open', () => {
-				//console.log("EDesignRuntimeWebSocketClient.opened");
-
-				this.__wsStatus.next(WS_STATUS_CODES.OPEN);
-				this.emit(
-					'opened',
-					{
-						count: '',
-						id: this.__ws.uuid
-					}
-				);
-			});
-
-			this.__ws.on('close', () => {
-
-				//console.log("EDesignRuntimeWebSocketClient.ws.closed", this.__closing);
-				this.__wsStatus.next(WS_STATUS_CODES.CLOSED);
-
-				this.emit('closed', { count: '', id: this.__ws.uuid });
-
-				if (!this.__closing) {
-					// Node is closing - do not reconnect ws after its disconnection when node shutdown
-					clearTimeout(this.tout);
-					//console.log("EDesignRuntimeWebSocketClient.ws.reconnect");
-					this.tout = setTimeout(
-						() => {
-							__connect();
-						}, WS_RECONNECT_TIMEOUT
-					);
-				}
-			});
-
-			this.__ws.on('error', (err) => {
-
-				console.error("EDesignRuntimeWebSocketClient.error", err);
-
-				this.emit(
-					'erro',
-					{
-						err: err,
-						id: this.__ws.uuid
-					}
-				);
-
-				if (!this.__closing) {
-					clearTimeout(this.tout);
-
-					this.tout = setTimeout(
-						() => {
-							__connect();
-						}, WS_RECONNECT_TIMEOUT
-					);
-				}
-			});
-
-			this.__ws.on(
-				'message',
-				(data, flags) => {
-					//console.debug("EDesignRuntimeWebSocketClient.ws.message", data.toString(), flags);
-					this.__wsIncomingMessages.next(JSON.parse(data));
-				}
-			);
-		}
-
-		this.on("close", (done) => {
-			//console.log("EDesignRuntimeWebSocketClient.close");
-
-			this.__closing = true;
-			this.__wsStatus.next(WS_STATUS_CODES.CLOSING);
-			this.__ws.close();
-			return done();
-		});
-
-		__connect();
-	}
-
-	EDesignRuntimeWebSocketClient.prototype.wsStatus = function () {
-		return this.__wsStatus;
-	}
-
-	EDesignRuntimeWebSocketClient.prototype.wsMessages = function () {
-		return this.__wsIncomingMessages;
-	}
-
-	EDesignRuntimeWebSocketClient.prototype.wsSend = function (data) {
-		//console.log("EDesignRuntimeWebSocketClient.send", data);
-		this.__ws.send(JSON.stringify(data));
-	}
-
-	RED.nodes.registerType("edesign.runtime.web-socket", EDesignRuntimeWebSocketClient);
-
-	/**
-	 * Trends
-	 */
-
-	//edesign.runtime.trend.list
+	//wago.wdx.trend.list
 	function EDesignRuntimeTrendList(config) {
 		RED.nodes.createNode(this, config);
 
@@ -232,9 +118,9 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.list", EDesignRuntimeTrendList,);
+	RED.nodes.registerType("wago.wdx.trend.list", EDesignRuntimeTrendList,);
 
-	//edesign.runtime.trend.detail
+	//wago.wdx.trend.detail
 	function EDesignRuntimeTrendDetail(config) {
 		RED.nodes.createNode(this, config);
 
@@ -306,9 +192,9 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.detail", EDesignRuntimeTrendDetail,);
+	RED.nodes.registerType("wago.wdx.trend.detail", EDesignRuntimeTrendDetail,);
 
-	//edesign.runtime.trend.delete
+	//wago.wdx.trend.delete
 	function EDesignRuntimeTrendDelete(config) {
 		RED.nodes.createNode(this, config);
 
@@ -380,9 +266,9 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.delete", EDesignRuntimeTrendDelete,);
+	RED.nodes.registerType("wago.wdx.trend.delete", EDesignRuntimeTrendDelete,);
 
-	//edesign.runtime.trend.save
+	//wago.wdx.trend.save
 	function EDesignRuntimeTrendSave(config) {
 		RED.nodes.createNode(this, config);
 
@@ -455,10 +341,10 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.save", EDesignRuntimeTrendSave,);
+	RED.nodes.registerType("wago.wdx.trend.save", EDesignRuntimeTrendSave,);
 
 
-	//edesign.runtime.trend.export-csv
+	//wago.wdx.trend.export-csv
 	function EDesignRuntimeTrendExportCSV(config) {
 		RED.nodes.createNode(this, config);
 
@@ -531,9 +417,9 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.export-csv", EDesignRuntimeTrendExportCSV,);
+	RED.nodes.registerType("wago.wdx.trend.export-csv", EDesignRuntimeTrendExportCSV,);
 
-	//edesign.runtime.trend.export-image
+	//wago.wdx.trend.export-image
 	function EDesignRuntimeTrendExportImage(config) {
 		RED.nodes.createNode(this, config);
 
@@ -606,9 +492,9 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.export-image", EDesignRuntimeTrendExportImage,);
+	RED.nodes.registerType("wago.wdx.trend.export-image", EDesignRuntimeTrendExportImage,);
 
-	//edesign.runtime.trend.export-sqlite
+	//wago.wdx.trend.export-sqlite
 	function EDesignRuntimeTrendExportSQLite(config) {
 		RED.nodes.createNode(this, config);
 
@@ -682,10 +568,10 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.export-sqlite", EDesignRuntimeTrendExportSQLite,);
+	RED.nodes.registerType("wago.wdx.trend.export-sqlite", EDesignRuntimeTrendExportSQLite,);
 
 
-	//edesign.runtime.trend.monitor
+	//wago.wdx.trend.monitor
 	function EDesignRuntimeTrendExportMonitor(config) {
 		RED.nodes.createNode(this, config);
 
@@ -760,5 +646,5 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("edesign.runtime.trend.monitor", EDesignRuntimeTrendExportMonitor,);
+	RED.nodes.registerType("wago.wdx.trend.monitor", EDesignRuntimeTrendExportMonitor,);
 }
