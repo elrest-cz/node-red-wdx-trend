@@ -39,378 +39,6 @@
 		});
 	}
 
-	/**
-	 * Data
-	 */
-	function DataPathTreeSelector(element) {
-		this.element = $(element);
-
-		let self = this;
-		this.opened = false;
-		this.DEFAULT_PATH = '';
-		this.PATH_SEPARATOR = '.';
-
-		this.clientElement = $('#node-input-client');
-		this.clientId = this.clientElement.val();
-		this.clientConfiguration = undefined;
-		this.dataSource = [];
-		this.browserElement = this.element.find('.browser');
-		this.pathElement = this.element.find('.schema-data-path');
-		this.treeListElement = $("<div style='display:block;clear:both;'>")
-			.css({ width: "100%", height: "100%" })
-			.appendTo(this.element)
-			.treeList({});
-
-		this.onSelect = async (event, item) => {
-			console.log('DataPathTreeSelector.onSelect', event, item);
-			//await this.browse(item.path);
-			if (!item.selected) {
-				console.log('DataPathTreeSelector.onSelect.selected', event, item);
-				//this.pathElement.val(item.path);
-
-				// The checkbox is checked
-			} else {
-				// The checkbox is not checked
-			}
-		};
-
-		this.onBrowserClick = () => {
-
-			console.debug('DataPathTreeSelector.onBrowserClick');
-
-			if (this.browserElement.hasClass('disabled')) {
-				return;
-			}
-
-			this.opened = !this.opened;
-
-			if (this.opened) {
-				this.treeListElement.show();
-			} else {
-				this.treeListElement.hide();
-			}
-		};
-
-		this.treeListElement.on('treelistselect', async (event, item) => {
-			this.onSelect(event, item);
-		},
-		);
-
-		this.browserElement.click(() => {
-			this.onBrowserClick();
-		});
-
-		this.treeListElement.treeList('data', [...this.dataSource]);
-
-		this.browse = async (dataPath, level,) => {
-			return new Promise(async (resolve, reject) => {
-				try {
-					console.debug('DataPathTreeSelector.browse', { dataPath: dataPath, level: level });
-
-					const message = {
-						type: 'DataGetSchemaRequest',
-						body: {
-							path: dataPath,
-							level: level,
-						},
-						uuid: crypto.randomUUID(),
-					};
-
-					const onResponse = async (message) => {
-						if (message.error) {
-							reject(message.error);
-						} else {
-							const schema = JSON.parse(message.data).body;
-							console.log('onResponse', schema);
-							this.ws.removeEventListener("message", onResponse);
-
-							await this.mergeSchema(schema);
-							resolve(schema);
-						}
-					};
-
-					this.ws.addEventListener("message", onResponse);
-
-					this.ws.send(JSON.stringify(message));
-
-				} catch (err) {
-					console.error(
-						'DataPathTreeSelector.browse.error',
-						err,
-					);
-					reject(err);
-				}
-			});
-		};
-
-		this.schemaToTreeItem = (schema) => {
-			schema.label = schema.path;
-			schema.id = schema.uuid;
-
-			if (undefined !== schema.children && 0 < schema.children.length) {
-				for (let i = 0; i < schema.children.length; i++) {
-					schema.children[i] = this.schemaToTreeItem(schema.children[i]);
-				}
-			}
-			return schema;
-		};
-
-		this.mergeSchema = async (schema,) => {
-			console.log('DataPathTreeSelector.mergeSchema', schema);
-			schema = this.schemaToTreeItem(schema);
-
-			const data = [...this.dataSource];
-
-			schema.expanded = true;
-
-			if ('' === schema.path) {
-				data.splice(0, data.length);
-				data.push(schema);
-
-			} else {
-				let schemaEntry = data[0];  // entry
-
-				let schemaEntryCurrent = schemaEntry;
-
-				let schemaRelativePath;
-				let foundIndex;
-
-				const paths = schema.path.split(this.PATH_SEPARATOR);
-				// console.log(`EdesignUiRuntimeDataService.mergeSchema.paths`, paths);
-
-				while (paths.length > 0 && schemaEntryCurrent) {
-					schemaRelativePath = paths.shift();
-
-					if (schemaEntryCurrent?.children) {
-						foundIndex = schemaEntryCurrent?.children.findIndex(
-							(item) => {
-								// return 0===paths.length ? schema.uuid === item.uuid
-								// :schemaRelativePath===item.relativePath;
-
-								return 0 === paths.length ?
-									schema.uuid === item.uuid :
-									schemaRelativePath === item.relativePath;
-							});
-
-						if (-1 < foundIndex && 0 === paths.length) {
-							// console.log(`EdesignUiRuntimeDataService.mergeSchema.found`,
-							// schemaEntryFound);
-							/*
-							schemaEntryCurrent.children[foundIndex] = Object.assign(
-									schemaEntryCurrent.children[foundIndex],
-									schema
-							);
-							*/
-							schema.expanded = schemaEntryCurrent.children[foundIndex].expanded;
-							schemaEntryCurrent.children[foundIndex] = schema;
-
-						} else if (0 === paths.length) {
-							schema.expanded = true;
-							schemaEntryCurrent.children.push(schema);
-						} else if (-1 < foundIndex) {
-							schemaEntryCurrent.expanded = true;
-							schemaEntryCurrent = schemaEntryCurrent.children[foundIndex];
-						}
-					}
-				}
-
-				data[0] = schemaEntry;
-			}
-
-
-			this.dataSource = data;
-			this.treeListElement.treeList('data', [...this.dataSource]);
-
-			console.log('DataPathTreeSelector.mergeSchema.done');
-		};
-
-		this.init = async () => {
-			try {
-				console.debug('DataPathTreeSelector.init');
-
-				RED.nodes.eachConfig((config) => {
-					if (this.clientId === config.id && undefined !== config.url && '' !== config.url) {
-						this.clientConfiguration = {
-							url: config.url,
-							proxyUrl: config.proxyUrl,
-						};
-
-						console.log('DataPathTreeSelector.init', this.clientConfiguration);
-					}
-				});
-
-				await this.connect();
-				await this.open();
-
-			} catch (err) {
-				console.error(
-					'DataPathTreeSelector.init.error',
-					err,
-				);
-			}
-		};
-
-		this.open = async () => {
-			console.log('DataPathTreeSelector.open');
-
-			const dataPath = this.pathElement.val();
-
-			console.log('DataPathTreeSelector.open.dataPath', dataPath);
-
-			if (undefined === dataPath) {
-				return;
-			}
-
-			const paths = dataPath.split(
-				this.PATH_SEPARATOR,
-			);
-			paths.unshift(this.DEFAULT_PATH);
-
-			console.log('DataPathTreeSelector.open.paths', paths);
-
-			let currentPath = this.DEFAULT_PATH;
-
-			for (const path of paths) {
-				if (this.DEFAULT_PATH === path) {
-					currentPath = path;
-				} else {
-					currentPath = (currentPath === this.DEFAULT_PATH) ? path :
-						[currentPath, path].join(
-							this.PATH_SEPARATOR,
-						);
-				}
-
-				const schema = await this.browse(currentPath);
-
-				if (undefined !== schema) {
-					await this.expanderClicked(schema);
-				}
-			}
-		};
-
-		this.findSchema = async (path,) => {
-			const data =
-				this.dataSource;
-
-			if (0 === data.length) {
-				return undefined;
-			}
-
-			let schema = data[0];
-
-			if (this.DEFAULT_PATH === path || undefined === schema) {
-				return schema;
-			}
-
-			/** Relative paths to the tree paths */
-			const paths = path.split(this.PATH_SEPARATOR);
-
-			let relativePath;
-
-			while (paths.length && undefined !== schema?.children) {
-				relativePath = paths.shift();
-
-				// console.log(`EdesignUiRuntimeDataService.findSchema.filter`,
-				// relativePath, schema.children);
-
-				schema = schema.children.find(
-					(item) => {
-						// console.log(`EdesignUiRuntimeDataService.findSchema.filter.find`,
-						// relativePath, item.relativePath);
-						return relativePath === item.relativePath;
-					});
-				// console.log(`EdesignUiRuntimeDataService.findSchema.next`, schema);
-			}
-
-			// console.log(`EdesignUiRuntimeDataService.findSchema.end-filter`,
-			// relativePath, schema);
-
-			return schema;
-		};
-
-		this.expanderClicked = async (item,) => {
-			try {
-				const dataSourceNode = this.findSchema(item.path);
-
-				if (undefined === dataSourceNode?.children) {
-					return;
-				}
-
-				node.expanded = !node.expanded;
-
-				if (undefined === dataSourceNode ||
-					dataSourceNode.children?.length === 0) {
-					await this.browse(item.path);
-				}
-
-			} catch (err) {
-				console.error(
-					'DataPathTreeSelector.expanderClicked.error',
-					err,
-				);
-			}
-		};
-
-		this.close = async () => {
-			this.opened = false;
-		}
-
-		this.connect = async () => {
-
-			return new Promise(async (resolve, reject) => {
-				try {
-					console.debug('DataPathTreeSelector.connect', { clientConfiguration: this.clientConfiguration });
-
-					this.ws = new WebSocket(this.clientConfiguration.proxyUrl);
-
-					this.ws.addEventListener("open", (event) => {
-						resolve();
-					});
-
-					this.ws.addEventListener("error", (event) => {
-						reject();
-					});
-
-					this.ws.addEventListener("close", (event) => {
-						reject();
-					});
-
-
-				} catch (err) {
-					console.error(
-						'DataPathTreeSelector.browse.error',
-						err,
-					);
-					reject(err);
-				}
-			});
-		}
-
-		this.disable = () => {
-			this.browserElement.addClass('disabled');
-			this.treeListElement.hide();
-		};
-
-		this.enable = () => {
-			this.browserElement.removeClass('disabled');
-		};
-
-		setTimeout(async () => {
-			if (this.opened) {
-				this.treeListElement.show();
-			} else {
-				this.treeListElement.hide();
-			}
-			this.init();
-
-		}, 0);
-
-		return self;
-	};
-
-	/**
-	 * Trends
-	 */
 	RED.nodes.registerType('wago.wdx.trend.list', {
 		category: 'WDX Trend',
 		color: '#FFFFFF',
@@ -423,7 +51,7 @@
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "List",
 		label: "WDX - Trend - List",
@@ -443,12 +71,12 @@
 				type: "wago.wdx.web-socket",
 				required: true
 			},
-			trendUuid: {
+			trendUUID: {
 			}
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Detail",
 		label: "WDX - Trend - Detail",
@@ -473,7 +101,7 @@
 		},
 		inputs: 1,
 		outputs: 3,
-		outputLabels: ["Succeded", "Errored", "Completed",],
+		outputLabels: ["Update", "Error", "Complete",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Monitor",
 		label: "WDX - Trend - Monitor",
@@ -493,12 +121,12 @@
 				type: "wago.wdx.web-socket",
 				required: true
 			},
-			trendUuid: {
+			trendUUID: {
 			}
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Delete",
 		label: "WDX - Trend - Delete",
@@ -523,7 +151,7 @@
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Save",
 		label: "WDX - Trend - Save",
@@ -543,12 +171,12 @@
 				type: "wago.wdx.web-socket",
 				required: true
 			},
-			trendUuid: {
+			trendUUID: {
 			}
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Export SQLite",
 		label: "WDX - Trend - Export SQLite",
@@ -568,12 +196,12 @@
 				type: "wago.wdx.web-socket",
 				required: true
 			},
-			trendUuid: {
+			trendUUID: {
 			}
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Export CSV",
 		label: "WDX - Trend - Export CSV",
@@ -593,12 +221,12 @@
 				type: "wago.wdx.web-socket",
 				required: true
 			},
-			trendUuid: {
+			trendUUID: {
 			}
 		},
 		inputs: 1,
 		outputs: 2,
-		outputLabels: ["Succeded", "Errored",],
+		outputLabels: ["Success", "Error",],
 		icon: "WagoLogo.svg",
 		paletteLabel: "Export Image",
 		label: "WDX - Trend - Export Image",
@@ -626,9 +254,97 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.list">
+	
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - List</h2>
-	<p>Retrieves trend list from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - List <br />
+		<b>Description:</b> Retrieves all trends from the WDX.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>		
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload array of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Trend.md">WDX - Trend Schema model</a>.</li>
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - List node flow</b>
+			<p>
+				 Will retrieve WDX - Trend list from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-list.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"8ff26838dcd98fe5","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - List","style":{"label":true},"nodes":["88075cb840dfcf23","7fc27c5fe0c4b803","e914ce9c6d39b8f5","4bd39486dd4e8f28"],"x":34,"y":179,"w":1012,"h":162},{"id":"88075cb840dfcf23","type":"debug","z":"25cd250a657945d4","g":"8ff26838dcd98fe5","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":220,"wires":[]},{"id":"7fc27c5fe0c4b803","type":"inject","z":"25cd250a657945d4","g":"8ff26838dcd98fe5","name":"WDX Example - Trends List Request","props":[{"p":"payload"},{"p":"topic","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","payload":"","payloadType":"date","x":220,"y":260,"wires":[["4bd39486dd4e8f28"]]},{"id":"e914ce9c6d39b8f5","type":"debug","z":"25cd250a657945d4","g":"8ff26838dcd98fe5","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":300,"wires":[]},{"id":"4bd39486dd4e8f28","type":"wago.wdx.trend.list","z":"25cd250a657945d4","g":"8ff26838dcd98fe5","name":"","client":"3949037aa7f8a94a","x":610,"y":260,"wires":[["88075cb840dfcf23"],["e914ce9c6d39b8f5"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.detail">
@@ -652,9 +368,106 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.detail">
+
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Detail</h2>
-	<p>Retrieves trend detail from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Detail <br />
+		<b>Description:</b> Retrieves WDX - Trend detail from the WDX.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>	
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Trend.md">WDX - Trend Schema model</a>.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Detail node flow</b>
+			<p>
+				 Will retrieve WDX - Trend detail from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-detail.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"c63837a54591305d","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Detail","style":{"label":true},"nodes":["f1f05f696fa6d9da","e1b4ad2e8461722d","a3c437866fa645e3","43c27d35882cdd1e"],"x":34,"y":799,"w":1012,"h":162},{"id":"f1f05f696fa6d9da","type":"inject","z":"25cd250a657945d4","g":"c63837a54591305d","name":"WDX Example - Trends Detail Request","props":[{"p":"trendId","v":"1","vt":"num"},{"p":"topic","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":230,"y":880,"wires":[["43c27d35882cdd1e"]]},{"id":"e1b4ad2e8461722d","type":"debug","z":"25cd250a657945d4","g":"c63837a54591305d","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":840,"wires":[]},{"id":"a3c437866fa645e3","type":"debug","z":"25cd250a657945d4","g":"c63837a54591305d","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":920,"wires":[]},{"id":"43c27d35882cdd1e","type":"wago.wdx.trend.detail","z":"25cd250a657945d4","g":"c63837a54591305d","name":"","client":"3949037aa7f8a94a","x":580,"y":880,"wires":[["e1b4ad2e8461722d"],["a3c437866fa645e3"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.delete">
@@ -678,9 +491,107 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.delete">
+	
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Delete</h2>
-	<p>Deletes trend from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Delete <br />
+		<b>Description:</b> Deletes WDX - Trend from the WDX.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Trend.md">WDX - Trend Schema model</a>.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Delete node flow</b>
+			<p>
+				 Will delete WDX - Trend detail from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-delete.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"0344c1c2116636cc","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Delete","style":{"label":true},"nodes":["d8cadf102d396d5f","e41103290b15597b","6271e43cc8f3c210","5876001a8548e105"],"x":34,"y":479,"w":1012,"h":162},{"id":"d8cadf102d396d5f","type":"inject","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"WDX Example - Trends Delete Request","props":[{"p":"trendUUID","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":230,"y":560,"wires":[["5876001a8548e105"]]},{"id":"e41103290b15597b","type":"debug","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":520,"wires":[]},{"id":"6271e43cc8f3c210","type":"debug","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":600,"wires":[]},{"id":"5876001a8548e105","type":"wago.wdx.trend.delete","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"","client":"3949037aa7f8a94a","x":600,"y":560,"wires":[["e41103290b15597b"],["6271e43cc8f3c210"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.save">
@@ -704,9 +615,107 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.save">
+	
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Save</h2>
-	<p>Saves trend to WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Save <br />
+		<b>Description:</b> Stores WDX - Trend to the WDX.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trend<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend  <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Trend.md">WDX - Trend Schema model</a></dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trend<span class="property-type">json</span></dt>
+				<dd>WAGO - WDX - Trend</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Trend.md">WDX - Trend Schema model</a>.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Save node flow</b>
+			<p>
+				 Will store WDX - Trend detail from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-save.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"0344c1c2116636cc","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Save","style":{"label":true},"nodes":["d8cadf102d396d5f","e41103290b15597b","6271e43cc8f3c210","127c416ab85b8bfd"],"x":34,"y":479,"w":1012,"h":162},{"id":"d8cadf102d396d5f","type":"inject","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"WDX Example - Trends Save Request","props":[{"p":"trend","v":"{\"name\":\"Example Virtual Store Test Variable\",\"dataPoolInterval\":1000,\"active\":false,\"showLines\":true,\"showLabels\":true,\"intervalPicker\":true,\"exportCurrentViewButton\":true,\"exportFullDataButton\":true,\"resetButton\":true,\"legend\":true,\"tooltips\":true,\"extendedTouchFeatures\":true,\"zoom\":true,\"xAxis\":{\"label\":\"Time Series\",\"format\":null,\"defaultFormat\":\"HumanReadable\",\"visible\":true},\"yAxis\":[{\"uuid\":\"ed1c1338-6fbe-4bdd-ad76-853aa951a8a7\",\"name\":\"Value\",\"label\":\"Value\",\"min\":null,\"max\":null,\"position\":\"left\",\"color\":\"#000000\",\"visible\":true}],\"dataSet\":[{\"uuid\":\"0e7e12ef-d9c7-48a9-ae98-f4b33b35d64f\",\"name\":\"test\",\"label\":\"test\",\"dataSchemaPath\":\"Virtual.virtual-store.test\",\"color\":\"#00ff19\",\"yAxis\":\"ed1c1338-6fbe-4bdd-ad76-853aa951a8a7\",\"enabled\":true,\"visible\":true,\"valueSnapshot\":null}],\"uuid\":\"949d9259-8756-45f7-a7b9-cc8e661d2257\"}","vt":"json"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":230,"y":560,"wires":[["127c416ab85b8bfd"]]},{"id":"e41103290b15597b","type":"debug","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":520,"wires":[]},{"id":"6271e43cc8f3c210","type":"debug","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":600,"wires":[]},{"id":"127c416ab85b8bfd","type":"wago.wdx.trend.save","z":"25cd250a657945d4","g":"0344c1c2116636cc","name":"","client":"3949037aa7f8a94a","trend":"","x":600,"y":560,"wires":[["e41103290b15597b"],["6271e43cc8f3c210"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.monitor">
@@ -730,9 +739,115 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.monitor">
+
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Monitor</h2>
-	<p>Subscribe/Unsubscribe to WDX trend monitor</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Monitor<br />
+		<b>Description:</b> Subscribe/Unsubscribe to WDX - Trend Data changes to the WDX.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>subscribe<span class="property-type">boolean</span></dt>
+		<dd>WDX - Trend - Monitor Subscribe/Unsubscribe</dd>
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>subscribe<span class="property-type">boolean</span></dt>
+				<dd>WDX - Trend - Monitor Subscribe/Unsubscribe</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Update:</b> Success response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Model.Trend.Graph.GraphData.md">WDX - Trend - Graph Data model</a>.</li>
+
+		<li><b>Complete:</b> Success response for this node. Output is flow message with empty payload.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Monitor node flow</b>
+			<p>
+				 Will subscribe/unsubscribe to WDX - Trend Monitor.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-monitor.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"bff9a4d802a48ee7","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trend - Monitor","style":{"label":true},"nodes":["f5a9141c1e8bac21","1bdc2531e44c6682","51e6db3319e56cdb","cc65dfa277f9627a","dedfba38be4cfcc4","9ec1c83b63574886","f0e470072c237781","8ff8399c834d1711","e6556a9f8f194beb","a76a4fe51a84995e","45db917c860ccb9c"],"x":34,"y":1079,"w":1432,"h":362},{"id":"f5a9141c1e8bac21","type":"inject","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Subscribe Request","props":[{"p":"trendUUID","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"},{"p":"subscribe","v":"true","vt":"bool"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":270,"y":1160,"wires":[["45db917c860ccb9c"]]},{"id":"1bdc2531e44c6682","type":"debug","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"Update","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":1060,"y":1160,"wires":[]},{"id":"51e6db3319e56cdb","type":"debug","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":1050,"y":1280,"wires":[]},{"id":"cc65dfa277f9627a","type":"comment","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Subscribe","info":"# WDX Example - Trend - Monitor Subscribe","x":220,"y":1120,"wires":[]},{"id":"dedfba38be4cfcc4","type":"comment","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Unubscribe","info":"# WDX Example - Trend - Monitor Unubscribe","x":230,"y":1340,"wires":[]},{"id":"9ec1c83b63574886","type":"inject","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Unubscribe Request","props":[{"p":"path","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"},{"p":"subscribe","v":"false","vt":"bool"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":270,"y":1380,"wires":[["45db917c860ccb9c"]]},{"id":"f0e470072c237781","type":"debug","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"Complete","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":1060,"y":1400,"wires":[]},{"id":"8ff8399c834d1711","type":"comment","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Subscribe Complete Message","info":"#WDX Example - Trend - Monitor Subscribe Complete Message","x":1220,"y":1360,"wires":[]},{"id":"e6556a9f8f194beb","type":"comment","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Subscribe Error Message","info":"# WDX Example - Trend - Monitor Subscribe Error Message","x":1210,"y":1240,"wires":[]},{"id":"a76a4fe51a84995e","type":"comment","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"WDX Example - Trend - Monitor Subscribe Updates Message","info":"# WDX Example - Trend - Monitor Subscribe Updates Message","x":1220,"y":1120,"wires":[]},{"id":"45db917c860ccb9c","type":"wago.wdx.trend.monitor","z":"25cd250a657945d4","g":"bff9a4d802a48ee7","name":"","client":"3949037aa7f8a94a","x":680,"y":1280,"wires":[["1bdc2531e44c6682"],["51e6db3319e56cdb"],["f0e470072c237781"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.export-image">
@@ -756,9 +871,107 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.export-image">
+
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Export Image</h2>
-	<p>Export trend image from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Export Image <br />
+		<b>Description:</b> Exports WDX - Trend from the WDX to image.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of image content (PNG format).</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Export Image node flow</b>
+			<p>
+				 Will export WDX - Trend to PNG image from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-export-image.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"fd83da35700742eb","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Export Image","style":{"label":true},"nodes":["7ac577805dc1aff4","a855fcba93d78dd4","fbe6ff30e7901a2f","4babe39f0405cb1e"],"x":34,"y":1579,"w":1012,"h":162},{"id":"7ac577805dc1aff4","type":"inject","z":"25cd250a657945d4","g":"fd83da35700742eb","name":"WDX Example - Trends - Export Image Request","props":[{"p":"trendUUID","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":260,"y":1660,"wires":[["4babe39f0405cb1e"]]},{"id":"a855fcba93d78dd4","type":"debug","z":"25cd250a657945d4","g":"fd83da35700742eb","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":1620,"wires":[]},{"id":"fbe6ff30e7901a2f","type":"debug","z":"25cd250a657945d4","g":"fd83da35700742eb","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":1700,"wires":[]},{"id":"4babe39f0405cb1e","type":"wago.wdx.trend.export-image","z":"25cd250a657945d4","g":"fd83da35700742eb","name":"","client":"3949037aa7f8a94a","x":660,"y":1660,"wires":[["a855fcba93d78dd4"],["fbe6ff30e7901a2f"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.export-sqlite">
@@ -782,9 +995,107 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.export-sqlite">
+	
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Export SQLite</h2>
-	<p>Export trend SQLite database from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Export SQLite<br />
+		<b>Description:</b> Exports WDX - Trend from the WDX to SQLite database.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of SQLite database.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Export SQLite node flow</b>
+			<p>
+				 Will export WDX - Trend to SQLite database from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-export-sqlite.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"e4d6e4ca6720d16b","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Export SQLite","style":{"label":true},"nodes":["910effc99bfe2ca2","78580e1a91da6bcb","4946561879694527","2c9931c3ffc5a4cb"],"x":34,"y":1879,"w":1012,"h":162},{"id":"910effc99bfe2ca2","type":"inject","z":"25cd250a657945d4","g":"e4d6e4ca6720d16b","name":"WDX Example - Trends - Export SQLite Request","props":[{"p":"trendUUID","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":260,"y":1960,"wires":[["2c9931c3ffc5a4cb"]]},{"id":"78580e1a91da6bcb","type":"debug","z":"25cd250a657945d4","g":"e4d6e4ca6720d16b","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":1920,"wires":[]},{"id":"4946561879694527","type":"debug","z":"25cd250a657945d4","g":"e4d6e4ca6720d16b","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":2000,"wires":[]},{"id":"2c9931c3ffc5a4cb","type":"wago.wdx.trend.export-sqlite","z":"25cd250a657945d4","g":"e4d6e4ca6720d16b","name":"","client":"3949037aa7f8a94a","x":660,"y":1960,"wires":[["78580e1a91da6bcb"],["4946561879694527"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
 
 <script type="text/html" data-template-name="wago.wdx.trend.export-csv">
@@ -818,7 +1129,105 @@
 </script>
 
 <script type="text/html" data-help-name="wago.wdx.trend.export-csv">
+	
+	<img src="icons/@wago/node-red-wdx-data/WagoLogo.svg" />
+
 	<h2>WAGO - WDX - Trend - Export CSV</h2>
-	<p>Export trend CSV data from WDX</p>
-	<h2>Parameters</h2>
+
+	<h3>Overview</h3>
+
+	<p>
+		<b>Node Name:</b> WDX - Trend - Export CSV<br />
+		<b>Description:</b> Exports WDX - Trend from the WDX to CSV.
+	</p>
+
+	<h3>Installation</h3>
+
+	<p>
+	<pre>npm install @wago/node-red-wdx-trend</pre>
+	</p>
+
+
+	<h3>Inputs</h3>
+
+	<dl class="message-properties">
+
+		<dt>trendUUID<span class="property-type">string</span></dt>
+		<dd>WAGO - WDX - Trend - UUID</dd>
+
+	</dl>
+
+	<h3>Configuration Options</h3>
+
+	<ul>
+		<li>
+			<b>Properties:</b>
+
+			<dl class="message-properties">
+				<dt>client<span class="property-type">wago.wdx.web-socket</span></dt>
+				<dd>WAGO - WDX - Web Socket Client</dd>
+
+				<dt>trendUUID<span class="property-type">string</span></dt>
+				<dd>WAGO - WDX - Trend - UUID</dd>
+
+			</dl>
+		</li>
+	</ul>
+
+	<h3>Outputs</h3>
+
+	<ul>
+		<li><b>Success:</b> Success output for this node. Output is flow message with payload of CSV.</li>
+
+		<li><b>Error:</b> Error response for this node. Output is flow message with payload of <a href="https://github.com/elrest-cz/wdx-schema/blob/master/docs/classes/WDX.Schema.Message.MessageError.md">WDX - Schema -  Message - Error Message</a>.</li>
+	</ul>
+
+	<h3>Usage Examples</h3>
+
+	<ul>
+		<li>
+			<b>Example WDX - Trend - Export CSV node flow</b>
+			<p>
+				 Will export WDX - Trend to CSV database from WDX.
+			</p>
+		
+			<h4><b>Example Figure.</b></h4>
+		
+			<img src="icons/@wago/node-red-wdx-trend/wdx-trend-export-csv.png" />
+		
+			<h4><b>Example flow code.</b></h4>
+		
+			<pre>[{"id":"58a1bb0b82362539","type":"group","z":"25cd250a657945d4","name":"WDX Example - Trends - Export CSV","style":{"label":true},"nodes":["6cef0c54235d157d","e43ab0aeb1185054","eb71ea4212aed72a","bf49694cadbb28fb"],"x":34,"y":2179,"w":1012,"h":162},{"id":"6cef0c54235d157d","type":"inject","z":"25cd250a657945d4","g":"58a1bb0b82362539","name":"WDX Example - Trends - Export CSV Request","props":[{"p":"trendUUID","v":"949d9259-8756-45f7-a7b9-cc8e661d2257","vt":"str"}],"repeat":"","crontab":"","once":false,"onceDelay":0.1,"topic":"","x":250,"y":2260,"wires":[["bf49694cadbb28fb"]]},{"id":"e43ab0aeb1185054","type":"debug","z":"25cd250a657945d4","g":"58a1bb0b82362539","name":"Sucess","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":940,"y":2220,"wires":[]},{"id":"eb71ea4212aed72a","type":"debug","z":"25cd250a657945d4","g":"58a1bb0b82362539","name":"Error","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":2300,"wires":[]},{"id":"bf49694cadbb28fb","type":"wago.wdx.trend.export-csv","z":"25cd250a657945d4","g":"58a1bb0b82362539","name":"","client":"3949037aa7f8a94a","x":660,"y":2260,"wires":[["e43ab0aeb1185054"],["eb71ea4212aed72a"]]},{"id":"3949037aa7f8a94a","type":"wago.wdx.web-socket","url":"ws://localhost:82"}]</pre>
+		
+		</li>
+	</ul>
+
+	<h3>Error Handling</h3>
+
+	<dl class="message-properties">
+		<dt>400</dt>
+		<dd>Wrong request</dd>
+		<dt>401</dt>
+		<dd>Unauthorized</dd>
+		<dt>404</dt>
+		<dd>Not Found</dd>
+		<dt>500</dt>
+		<dd>Unexpected server error</dd>
+	</dl>
+
+	<h3>Additional Resources</h3>
+
+	<ul>
+		<li><b>Github:</b> <a href="https://github.com/elrest-cz/node-red-wdx-trend">https://github.com/elrest-cz/node-red-wdx-trend</a></li>
+		<li><b>NPMJS:</b> <a href="https://www.npmjs.com/package/@wago/node-red-wdx-trend">https://www.npmjs.com/package/@wago/node-red-wdx-trend</a></li>
+		<li><b>Support:</b> info@elrest.cz</li>
+	</ul>
+
+	<h3>Licence</h3>
+
+	<ul>
+		<li><b>Licence:</b> MIT</li>
+		<li><b>Copyright</b> (c) 2024 Elrest Automations Systeme GMBH</li>
+	</ul>
+
 </script>
