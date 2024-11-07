@@ -50,8 +50,6 @@ module.exports = function (RED) {
 		}
 	};
 
-	const WS_RECONNECT_TIMEOUT = 1000;
-
 	//wago.wdx.trend.list
 	function EDesignRuntimeTrendList(config) {
 		RED.nodes.createNode(this, config);
@@ -151,7 +149,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trendId = msg.trendId ?? config['trendId'] ?? undefined;
+			const trendId = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 			if (undefined === trendId) {
 				return;
 			}
@@ -225,7 +223,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trendId = msg.trendId ?? config['trendId'] ?? undefined;
+			const trendId = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 			if (undefined === trendId) {
 				return;
 			}
@@ -299,11 +297,11 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trend = msg.payload ?? config['trend'] ?? undefined;
+			const trend = msg.trend ?? config['trend'] ?? undefined;
 			if (undefined === trend) {
 				return;
 			}
-
+			console.log(trend);
 			const request = new WDXSchema.WDX.Schema.Message.Trend.SetRequest(
 				trend,
 			);
@@ -343,7 +341,6 @@ module.exports = function (RED) {
 	}
 	RED.nodes.registerType("wago.wdx.trend.save", EDesignRuntimeTrendSave,);
 
-
 	//wago.wdx.trend.export-csv
 	function EDesignRuntimeTrendExportCSV(config) {
 		RED.nodes.createNode(this, config);
@@ -375,7 +372,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trend = msg.payload ?? config['trend'] ?? undefined;
+			const trend = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 			if (undefined === trend) {
 				return;
 			}
@@ -450,7 +447,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trend = msg.payload ?? config['trend'] ?? undefined;
+			const trend = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 			if (undefined === trend) {
 				return;
 			}
@@ -525,7 +522,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trend = msg.payload ?? config['trend'] ?? undefined;
+			const trend = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 
 			if (undefined === trend) {
 				return;
@@ -572,7 +569,7 @@ module.exports = function (RED) {
 
 
 	//wago.wdx.trend.monitor
-	function EDesignRuntimeTrendExportMonitor(config) {
+	function EDesignRuntimeTrendMonitor(config) {
 		RED.nodes.createNode(this, config);
 
 		this.status(NODE_STATUS.CONNECTING);
@@ -602,7 +599,7 @@ module.exports = function (RED) {
 
 		this.on('input', (msg, nodeSend, nodeDone) => {
 
-			const trendUuid = msg.payload ?? config['trendUuid'] ?? undefined;
+			const trendUuid = msg.trendUUID ?? config['trendUUID'] ?? undefined;
 
 			if (undefined === trendUuid) {
 				return;
@@ -646,5 +643,5 @@ module.exports = function (RED) {
 			this.status(NODE_STATUS.CLOSED);
 		});
 	}
-	RED.nodes.registerType("wago.wdx.trend.monitor", EDesignRuntimeTrendExportMonitor,);
+	RED.nodes.registerType("wago.wdx.trend.monitor", EDesignRuntimeTrendMonitor,);
 }
